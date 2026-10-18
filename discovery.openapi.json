@@ -1,0 +1,30 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Buddy Discovery HTTP health API",
+    "version": "1.0.0",
+    "description": "Domain operations use buddy_discovery.proto, not HTTP."
+  },
+  "paths": {
+    "/up": {
+      "get": {
+        "operationId": "discoveryHealth",
+        "responses": {
+          "200": {
+            "description": "Application boots successfully",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application health check failed"
+          }
+        }
+      }
+    }
+  }
+}

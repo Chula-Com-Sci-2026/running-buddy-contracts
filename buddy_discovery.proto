@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package buddy_discovery.v1;
+
+service BuddyDiscoveryService {
+  rpc SearchRunners(SearchRunnersRequest) returns (SearchRunnersResponse);
+  rpc ListBuddies(ListBuddiesRequest) returns (ListBuddiesResponse);
+  rpc SendBuddyRequest(SendBuddyRequestRequest) returns (BuddyRequest);
+  rpc GetBuddyRequest(GetBuddyRequestRequest) returns (BuddyRequest);
+  rpc ListBuddyRequests(ListBuddyRequestsRequest) returns (ListBuddyRequestsResponse);
+  rpc RespondToBuddyRequest(RespondToBuddyRequestRequest) returns (BuddyRequest);
+  rpc CancelBuddyRequest(CancelBuddyRequestRequest) returns (CancelBuddyRequestResponse);
+}
+
+message BuddyRequest {
+  string id = 1;
+  string sender_id = 2;
+  string recipient_id = 3;
+  string status = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message SendBuddyRequestRequest {
+  string sender_id = 1;
+  string recipient_id = 2;
+}
+
+message GetBuddyRequestRequest {
+  string id = 1;
+}
+
+message ListBuddyRequestsRequest {
+  string runner_id = 1;
+  string status = 2;
+}
+
+message ListBuddyRequestsResponse {
+  repeated BuddyRequest buddy_requests = 1;
+}
+
+message RespondToBuddyRequestRequest {
+  string id = 1;
+  string recipient_id = 2;
+  string decision = 3;
+}
+
+message CancelBuddyRequestRequest {
+  string id = 1;
+  string sender_id = 2;
+}
+
+message CancelBuddyRequestResponse {}
+
+message SearchRunnersRequest {
+  double radius_km = 1;
+  string experience = 2;
+  string pace = 3;
+  string availability = 4;
+}
+message SearchRunnersResponse { string runners_json = 1; }
+message ListBuddiesRequest {}
+message ListBuddiesResponse { repeated string runner_ids = 1; }

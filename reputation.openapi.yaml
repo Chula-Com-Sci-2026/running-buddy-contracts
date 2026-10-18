@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  title: Reputation Service
+  version: 1.0.0
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/running_records:
+    get:
+      responses:
+        '200': {description: Authenticated runner's records}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [running_record]
+              properties:
+                running_record:
+                  $ref: '#/components/schemas/RecordInput'
+      responses:
+        '201': {description: Eligible runner's record persisted}
+        '403': {description: Confirmed attendance in a completed run required}
+  /api/v1/running_records/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      responses:
+        '200': {description: Owned record}
+        '404': {description: Missing or not owned}
+    patch:
+      description: Update owned distance, duration, occurrence time or notes; run ownership cannot change.
+      responses:
+        '200': {description: Updated}
+    delete:
+      responses:
+        '204': {description: Deleted}
+  /api/v1/runs/{run_id}/attendance:
+    parameters:
+      - {name: run_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      responses:
+        '200': {description: Scheduling accepted confirmation and Reputation persisted it}
+        '403': {description: Not a participant}
+        '409': {description: Run has not ended}
+  /api/v1/runs/{run_id}/ratings:
+    parameters:
+      - {name: run_id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rateeId, punctuality, paceAccuracy, friendliness]
+              properties:
+                rateeId: {type: string, format: uuid}
+                punctuality: {type: integer, minimum: 1, maximum: 5}
+                paceAccuracy: {type: integer, minimum: 1, maximum: 5}
+                friendliness: {type: integer, minimum: 1, maximum: 5}
+      responses:
+        '201': {description: Rating persisted}
+        '403': {description: Confirmed completed-run participation required; self-rating forbidden}
+        '422': {description: Invalid or duplicate rating}
+  /api/v1/runners/{runner_id}/rating-summary:
+    parameters:
+      - {name: runner_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      responses:
+        '200': {description: Count and average; average null and hidden true below three ratings}
+  /api/v1/me/history:
+    get:
+      responses:
+        '200': {description: Owned records with totalDistanceMeters and totalDurationSeconds}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  schemas:
+    RecordInput:
+      type: object
+      required: [run_id, distance_meters, duration_seconds, occurred_at]
+      properties:
+        run_id: {type: string, format: uuid}
+        distance_meters: {type: integer, minimum: 1}
+        duration_seconds: {type: integer, minimum: 1}
+        occurred_at: {type: string, format: date-time}
+        notes: {type: string}
