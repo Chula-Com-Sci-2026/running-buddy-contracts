@@ -207,6 +207,142 @@
           }
         }
       }
+    },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Get Preferences",
+        "description": "Return the runner's setting for every notification category.",
+        "operationId": "get_preferences_api_v1_notifications_preferences_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesPublic"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Update Preferences",
+        "description": "Turn notification categories on or off, leaving the rest as they are.",
+        "operationId": "update_preferences_api_v1_notifications_preferences_patch",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesPublic"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -327,6 +463,83 @@
         ],
         "title": "NotificationsPublic",
         "description": "One page of a runner's inbox.\n\nAttributes:\n    items: Notifications on this page, newest first.\n    unread_count: Unread notifications across the whole inbox.\n    next_cursor: Value for `before` to fetch the next page, or None on\n        the last page."
+      },
+      "PreferencePublic": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "buddy_requests",
+              "run_invitations",
+              "run_changes",
+              "reminders",
+              "weather_alerts",
+              "attendance_prompts"
+            ],
+            "title": "Category"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "enabled",
+          "locked"
+        ],
+        "title": "PreferencePublic",
+        "description": "A runner's setting for one category.\n\nAttributes:\n    category: The notification category.\n    enabled: Whether the runner receives this category.\n    locked: Whether the runner is unable to turn it off."
+      },
+      "PreferencesPublic": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreferencePublic"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "PreferencesPublic",
+        "description": "A runner's setting for every category.\n\nAttributes:\n    items: One entry per category, in a stable order."
+      },
+      "PreferencesUpdate": {
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "enum": [
+                "buddy_requests",
+                "run_invitations",
+                "run_changes",
+                "reminders",
+                "weather_alerts",
+                "attendance_prompts"
+              ]
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categories"
+        ],
+        "title": "PreferencesUpdate",
+        "description": "Request to change some categories, leaving the rest as they are.\n\nAttributes:\n    categories: The categories to change and whether each should be on."
       },
       "ValidationError": {
         "properties": {

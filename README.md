@@ -9,7 +9,7 @@ This repository contains contracts for every implemented backend service and the
 | Profile | [profile.openapi.json](profile.openapi.json) | Exported FastAPI snapshot; own profile, public profiles and runner listing |
 | Run Conditions | [conditions.openapi.json](conditions.openapi.json) | Exported FastAPI snapshot; weather/air-quality conditions and readiness |
 | Run Scheduling | [scheduling.openapi.json](scheduling.openapi.json) | Exported FastAPI snapshot; runs, membership and internal attendance confirmation |
-| Notification | [notification.openapi.json](notification.openapi.json) | Live export from `notification-service`; list notifications and mark read |
+| Notification | [notification.openapi.json](notification.openapi.json) | Live export from `notification-service`; list notifications, mark read and category preferences |
 | Buddy Discovery (gRPC) | [buddy_discovery.proto](buddy_discovery.proto) | Copy of the service's versioned protobuf; seven RPCs for search, buddies and requests |
 | Buddy Discovery (HTTP) | [discovery.openapi.json](discovery.openapi.json) | Derived from Rails routes; health endpoint only |
 | Reputation | [reputation.openapi.yaml](reputation.openapi.yaml) | Existing handwritten contract; records, attendance, ratings and history |
@@ -43,7 +43,7 @@ Notification logs and returns a UUID `X-Correlation-Id` request header, and crea
 - `GET /api/v1/buddies` -> Discovery; returns array of buddy UUIDs.
 - `/api/v1/runs` and run membership operations -> Scheduling.
 - `GET /api/v1/conditions` -> Run Conditions.
-- `/api/v1/notifications` and `PATCH /api/v1/notifications/{uuid}/read` -> Notification.
+- `/api/v1/notifications`, `PATCH /api/v1/notifications/{uuid}/read` and `GET/PATCH /api/v1/notifications/preferences` -> Notification.
 - `/api/v1/running_records`, `/api/v1/me/history`, `POST /api/v1/runs/{uuid}/attendance`, `POST /api/v1/runs/{uuid}/ratings`, and `GET /api/v1/runners/{uuid}/rating-summary` -> Reputation.
 - `GET /api/v1/dashboard` aggregates current profile, cumulative record distance and the next scheduled run, which may be null. The total is cumulative history, not a weekly metric.
 
