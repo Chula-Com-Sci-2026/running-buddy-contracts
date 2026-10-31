@@ -9,7 +9,7 @@ This repository contains contracts for every implemented backend service and the
 | Profile | [profile.openapi.json](profile.openapi.json) | Exported FastAPI snapshot; own profile, public profiles and runner listing |
 | Run Conditions | [conditions.openapi.json](conditions.openapi.json) | Exported FastAPI snapshot; weather/air-quality conditions and readiness |
 | Run Scheduling | [scheduling.openapi.json](scheduling.openapi.json) | Exported FastAPI snapshot; runs, membership and internal attendance confirmation |
-| Notification | [notification.openapi.json](notification.openapi.json) | Exported FastAPI snapshot; list notifications and mark read |
+| Notification | [notification.openapi.json](notification.openapi.json) | Live export from `notification-service`; list notifications, mark read and category preferences |
 | Buddy Discovery (gRPC) | [buddy_discovery.proto](buddy_discovery.proto) | Copy of the service's versioned protobuf; seven RPCs for search, buddies and requests |
 | Buddy Discovery (HTTP) | [discovery.openapi.json](discovery.openapi.json) | Derived from Rails routes; health endpoint only |
 | Reputation | [reputation.openapi.yaml](reputation.openapi.yaml) | Existing handwritten contract; records, attendance, ratings and history |
@@ -21,7 +21,7 @@ Trust & Safety has no implemented service or contract in this stack. It remains 
 
 ## Contract scope and updates
 
-The exported FastAPI files are existing snapshots, not newly verified live exports. A service's actual `/openapi.json` is authoritative for its implemented HTTP routes. Gateway catch-all proxy routes are generic in OpenAPI; downstream contracts define forwarded resource schemas. Some existing responses have unconstrained schemas; use the service behavior as the authority until those schemas are completed. The Reputation contract is handwritten and currently omits some response bodies, health and the Rails PUT update alias.
+The exported FastAPI files are existing snapshots, not newly verified live exports, except Notification, which is exported from its running service with complete response schemas. A service's actual `/openapi.json` is authoritative for its implemented HTTP routes. Gateway catch-all proxy routes are generic in OpenAPI; downstream contracts define forwarded resource schemas. Some existing responses have unconstrained schemas; use the service behavior as the authority until those schemas are completed. The Reputation contract is handwritten and currently omits some response bodies, health and the Rails PUT update alias.
 
 The team Identity contract was derived from its mounted Express routes and controller/session behavior. It is a separate implementation contract, not a replacement for the Python fallback contract. The team implementation is selected by the team-identity Compose override. Its additional email, phone and password-reset routes are **not exposed by the current gateway**; calling those through the gateway requires explicit routing changes. Neither implementation exposes a public account-lock operation.
 
@@ -30,6 +30,8 @@ When changing a FastAPI service, export its `/openapi.json` again and review the
 ## Authentication and shared conventions
 
 All protected HTTP requests carry `Authorization: Bearer <JWT>`. gRPC carries the same value in lowercase `authorization` metadata. Tokens use issuer `cant-run-alone-local`, audience `cant-run-alone-services`, HS256 and a 15-minute expiry. Refresh tokens are HttpOnly, SameSite=Lax cookies scoped to `/api/v1/auth`; rotating/revoked state is stored in Identity. The signing key is local configuration and is never part of this catalog.
+
+Notification logs and returns a UUID `X-Correlation-Id` request header, and creates one when it is missing or invalid. A gateway should forward it along with `Authorization`.
 
 ## Gateway routing
 
@@ -41,7 +43,7 @@ All protected HTTP requests carry `Authorization: Bearer <JWT>`. gRPC carries th
 - `GET /api/v1/buddies` -> Discovery; returns array of buddy UUIDs.
 - `/api/v1/runs` and run membership operations -> Scheduling.
 - `GET /api/v1/conditions` -> Run Conditions.
-- `/api/v1/notifications` and `PATCH /api/v1/notifications/{uuid}/read` -> Notification.
+- `/api/v1/notifications`, `PATCH /api/v1/notifications/{uuid}/read` and `GET/PATCH /api/v1/notifications/preferences` -> Notification.
 - `/api/v1/running_records`, `/api/v1/me/history`, `POST /api/v1/runs/{uuid}/attendance`, `POST /api/v1/runs/{uuid}/ratings`, and `GET /api/v1/runners/{uuid}/rating-summary` -> Reputation.
 - `GET /api/v1/dashboard` aggregates current profile, cumulative record distance and the next scheduled run, which may be null. The total is cumulative history, not a weekly metric.
 

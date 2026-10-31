@@ -24,6 +24,8 @@ Exchange `cra.events`, type `topic`, durable. Routing key equals `eventType`.
 
 `BuddyRequestAnswered` has the same shape and `status` is `accepted` or `rejected`. Notification targets `recipientId` for sent events and `senderId` for answered events. Delivery is at least once. Notification's unique `(event_id, recipient_id)` constraint deduplicates after retries. Acknowledgement occurs only after database commit. Invalid messages are rejected to exchange `cra.dead` / queue `notifications.dead`; database failures close/reconnect the channel with a three-second retry delay so unacknowledged messages requeue.
 
+Notification declares its broker topology when its consumer starts, so publishing fails until it has run once: exchange `cra.events`; durable queue `notifications.events` with `x-dead-letter-exchange: cra.dead`, bound with routing keys `BuddyRequestSent` and `BuddyRequestAnswered`; durable topic exchange `cra.dead`; and durable queue `notifications.dead`, bound to it with `#`. A message whose routing key differs from its `eventType` counts as invalid. Payload fields outside this contract are ignored and not stored. An event in a category its target runner turned off is acknowledged and not stored.
+
 Discovery writes outbox events atomically with request creation/response and retries publishing every two seconds. Failed or unrouted publishes leave `published_at` null. The local publisher uses RabbitMQ's management publish API, persistent messages and positive routing acknowledgement. Consumers must be provisioned before events can leave the outbox.
 
 ## Team Identity email jobs
