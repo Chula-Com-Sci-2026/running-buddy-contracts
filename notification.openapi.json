@@ -7,14 +7,24 @@
   "paths": {
     "/up": {
       "get": {
+        "tags": [
+          "utils"
+        ],
         "summary": "Health",
+        "description": "Report that the process is alive.",
         "operationId": "health_up_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Up Get"
+                }
               }
             }
           }
@@ -23,9 +33,42 @@
     },
     "/api/v1/notifications": {
       "get": {
+        "tags": [
+          "notifications"
+        ],
         "summary": "Notifications",
+        "description": "List the runner's notifications, newest first.",
         "operationId": "notifications_api_v1_notifications_get",
         "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -42,9 +85,31 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsPublic"
+                }
               }
             }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -61,7 +126,11 @@
     },
     "/api/v1/notifications/{notification_id}/read": {
       "patch": {
+        "tags": [
+          "notifications"
+        ],
         "summary": "Read",
+        "description": "Mark one of the runner's notifications as read.",
         "operationId": "read_api_v1_notifications__notification_id__read_patch",
         "parameters": [
           {
@@ -90,9 +159,41 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPublic"
+                }
               }
             }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -110,6 +211,25 @@
   },
   "components": {
     "schemas": {
+      "ApiError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiError",
+        "description": "Error body for every failure except FastAPI's native 422.\n\nAttributes:\n    code: Stable uppercase code for clients to branch on.\n    message: Human-readable explanation."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -122,6 +242,91 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "NotificationPublic": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurredat"
+          },
+          "readAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "category",
+          "data",
+          "occurredAt",
+          "readAt"
+        ],
+        "title": "NotificationPublic",
+        "description": "Notification as returned to the runner who owns it.\n\nHolds no rendered text: events carry only IDs, and the client renders\nThai or English (NFR-6.3) and looks up display names through Profile.\n\nAttributes:\n    id: Notification ID.\n    type: Event type, such as `BuddyRequestSent`.\n    category: Category the runner can turn off.\n    data: Contract fields of the event payload.\n    occurred_at: When the event happened.\n    read_at: When the runner first read it, or None while unread."
+      },
+      "NotificationsPublic": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationPublic"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "unreadCount": {
+            "type": "integer",
+            "title": "Unreadcount"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "unreadCount",
+          "nextCursor"
+        ],
+        "title": "NotificationsPublic",
+        "description": "One page of a runner's inbox.\n\nAttributes:\n    items: Notifications on this page, newest first.\n    unread_count: Unread notifications across the whole inbox.\n    next_cursor: Value for `before` to fetch the next page, or None on\n        the last page."
       },
       "ValidationError": {
         "properties": {
@@ -146,6 +351,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
