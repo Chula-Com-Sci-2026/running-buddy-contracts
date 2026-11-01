@@ -28,6 +28,45 @@ Notification declares its broker topology when its consumer starts, so publishin
 
 Discovery writes outbox events atomically with request creation/response and retries publishing every two seconds. Failed or unrouted publishes leave `published_at` null. The local publisher uses RabbitMQ's management publish API, persistent messages and positive routing acknowledgement. Consumers must be provisioned before events can leave the outbox.
 
+## Profile events, version 1
+
+Machine-readable payload contract: [profile-events.schema.json](profile-events.schema.json).
+
+Profile publishes `ProfileUpdated` after every change to a runner's profile: a save, a visibility change, a photo attached or removed. Exchange `cra.events`, type `topic`, durable; Profile declares it on every connect. Routing key equals `eventType`.
+
+```json
+{
+  "eventId": "UUID",
+  "eventType": "ProfileUpdated",
+  "version": 1,
+  "occurredAt": "ISO-8601 UTC timestamp",
+  "correlationId": "UUID",
+  "payload": {
+    "id": "UUID",
+    "name": "Ray Attajak",
+    "area": "Lumphini area",
+    "areaCell": { "latitude": 13.73, "longitude": 100.54 },
+    "photoUrl": null,
+    "bio": null,
+    "paceMin": null,
+    "paceMax": null,
+    "experience": "Intermediate",
+    "availability": "Tue & Thu · 18:30",
+    "usualDistance": "5–10 km",
+    "gear": null,
+    "revision": 3
+  }
+}
+```
+
+The payload is the runner's public card plus `revision`. Every key is always present: a field the runner hid or never set is `null`, `gear` included (never `[]`). In the example, Ray hid his pace and has no bio, gear or photo. `id`, `name`, `area`, `areaCell` and `revision` are never null. The exact point and the list of hidden fields never appear: the point is sent only as its cell, rounded to a 0.01° grid. A hidden field is not used for matching either: a runner is left out of searches that filter on a field they hid, and included when that filter is off.
+
+Profile writes the event in the same transaction as the change (a transactional outbox) and relays it every two seconds, oldest first, over AMQP with publisher confirms. Messages are persistent and `mandatory`, with `contentType` `application/json` and `messageId` equal to `eventId`. An event counts as published only once the broker confirms it and did not return it as unroutable. Events therefore wait in the outbox until a queue is bound for `ProfileUpdated`, as they do while the broker is unreachable. Profile connects as its own broker user, `profile`, which may configure and write `cra.events` and nothing else.
+
+Delivery is at least once: deduplicate by `eventId`. Each event is a full snapshot, so a consumer replaces its copy rather than merging. It applies an event whose `payload.revision` is at least the one it holds, and ignores a lower one. `npm run events:republish` in Profile (`node dist/republish-events.js` in its image) sends every profile's current card again under its unchanged revision; run it when a consumer's copy must be built or rebuilt. Revisions restart at 1 when Profile's database is reset or re-seeded, so a consumer's copy must be reset with it.
+
+A consumer's queue, bound to `cra.events` with routing key `ProfileUpdated`, must be durable: RabbitMQ 4.3 refuses a queue that is neither durable nor exclusive, and an exclusive queue disappears with the connection that declared it.
+
 ## Team Identity email jobs
 
 Machine-readable payload contract: [identity-email-job.schema.json](identity-email-job.schema.json).

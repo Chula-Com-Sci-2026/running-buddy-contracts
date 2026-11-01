@@ -2,356 +2,1287 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Profile Service",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "description": "A runner's own profile is one resource, `/api/v1/me/profile`: \"me\" is the subject of the\ncaller's token, so a runner reads the whole of, and changes, only their own. A save is a PUT\nthat creates the profile or replaces it. Which fields other runners see is its own\noperation, and so is the photo — a three-step handshake, because the image lives in object\nstorage rather than here.\n\nAnyone's public card is `/api/v1/runners/{id}`: the fields its owner has not hidden, the area\nonly as its cell. Every key of a card, and of the owner's view, is always present; a field\nthat is hidden or unset is `null`.\n\nAfter every change it also publishes `ProfileUpdated` on RabbitMQ. That event's contract is\n`docs/profile-events.schema.json`, not this document.\n\nText fields are trimmed before their length rules apply, so whitespace alone counts as\nempty. A request body's unknown fields are ignored, not refused.\n"
   },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "paths": {
-    "/up": {
+    "/api/v1/me/profile": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
       "get": {
-        "summary": "Health",
-        "operationId": "health_up_get",
+        "operationId": "getProfile",
+        "summary": "Read your own profile, whole",
+        "description": "The whole profile — the exact point, the hidden set and the photo's key included.",
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "$ref": "#/components/responses/Profile"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
-      }
-    },
-    "/api/v1/me/profile": {
+      },
       "put": {
-        "summary": "Save",
-        "operationId": "save_api_v1_me_profile_put",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "Authorization"
-            }
-          }
-        ],
+        "operationId": "saveProfile",
+        "summary": "Save your profile — create it, or replace it",
+        "description": "Creates the profile on the first save and replaces it on every later one, answering 200 either way. The runner's answers are replaced whole; `usualDistance` and `gear` are kept when left out. A save never changes the hidden set or the photo. See `ProfileSave`.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Profile"
+                "$ref": "#/components/schemas/ProfileSave"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "$ref": "#/components/responses/Profile"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "summary": "Me",
-        "operationId": "me_api_v1_me_profile_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "$ref": "#/components/responses/ValidationFailed"
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+          "default": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
       }
     },
-    "/api/v1/runners/{runner_id}": {
-      "get": {
-        "summary": "Get Profile",
-        "operationId": "get_profile_api_v1_runners__runner_id__get",
-        "parameters": [
-          {
-            "name": "runner_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Runner Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+    "/api/v1/me/profile/visibility": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "put": {
+        "operationId": "setFieldVisibility",
+        "summary": "Choose which fields other runners see",
+        "description": "Replaces the set of hidden fields. A hidden field is `null` on the public card — to other runners, to `ProfileUpdated` and to its owner reading their own card — while the owner's view still shows everything. A save never touches this set, so saving can never reveal a field.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "The whole new set; send `[]` to show everything. Unknown fields are ignored.",
+                "required": [
+                  "hiddenFields"
+                ],
+                "properties": {
+                  "hiddenFields": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                      "$ref": "#/components/schemas/HideableField"
+                    }
+                  }
                 }
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Profile"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/me/profile/photo-uploads": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "post": {
+        "operationId": "createPhotoUpload",
+        "summary": "Create an upload for a new photo",
+        "description": "The first step of the photo handshake. Creates an upload: a short-lived URL the client PUTs the image to directly, and the key that upload will occupy. The resource is the *permission*, not the photo — which is why the path is `photo-uploads` and why nothing here accepts image bytes. The service never handles them; it is an API, not a file server.\nIt checks that object storage answers before signing, so a storage outage is a 503 here rather than a network error in the browser's upload later. It does not change the profile: once the upload succeeds, attach the key with `PUT /api/v1/me/profile/photo`. Until then the profile is untouched, so a failed upload leaves nothing pointing at an object that does not exist.",
+        "responses": {
+          "201": {
+            "description": "An upload is authorised",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "uploadUrl",
+                    "photoRef",
+                    "expiresInSeconds"
+                  ],
+                  "properties": {
+                    "uploadUrl": {
+                      "type": "string",
+                      "description": "PUT the image here, with no token — it is already signed. Expires; ask again rather than storing it."
+                    },
+                    "photoRef": {
+                      "$ref": "#/components/schemas/PhotoRef"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/StorageUnavailable"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/me/profile/photo": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "put": {
+        "operationId": "attachPhoto",
+        "summary": "Attach an uploaded photo",
+        "description": "The last step of the photo handshake: puts the uploaded photo on the profile. The key must be exactly one this service minted for this runner (`photos/{id}/{uuid}`) and the object must have been uploaded; otherwise 422 on `photoRef`. A photo it replaces is deleted from storage after the change, best effort. `photoUrl` then loads in an `<img>`, with no token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Unknown fields are ignored.",
+                "required": [
+                  "photoRef"
+                ],
+                "properties": {
+                  "photoRef": {
+                    "$ref": "#/components/schemas/PhotoRef"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Profile"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/StorageUnavailable"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removePhoto",
+        "summary": "Remove the photo",
+        "description": "Takes the photo off the profile, and deletes it from storage after the change, best effort — so it never answers 503: with storage down the photo is still removed from the profile, and the object is logged as an orphan. With no photo it answers 200 and changes nothing.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Profile"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
       }
     },
     "/api/v1/runners": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
       "get": {
-        "summary": "Search",
-        "operationId": "search_api_v1_runners_get",
+        "operationId": "searchRunners",
+        "summary": "Search other runners' cards — temporary",
+        "description": "Temporary: Buddy Discovery's search calls this until its own, over the cards it keeps from\n`ProfileUpdated`, is live; then it goes. The caller is the runner searching, needs a profile\nof their own, and is left out of the answer.\n\nEvery other runner's public card, plus `distanceKm`: the great-circle distance from the\ncaller's area cell to theirs — never between exact points — in kilometres, to one decimal.\nA runner is kept when `distanceKm` is at most `radiusKm`. The filters read the card, so a\nhidden field is `null`: it fails a filter on that field, and passes when that filter is\noff. Nearest first, then by `id`; no paging.\n\nAn unset filter may arrive as `0` or `\"\"`, and means the same as one left out. Any other\nparameter, such as `verifiedOnly`, is ignored.",
         "parameters": [
           {
             "name": "radiusKm",
             "in": "query",
             "required": false,
+            "description": "Kilometres. Left out, empty, 0 or negative means 10; anything that is not a number answers 422.",
             "schema": {
               "type": "number",
-              "default": 10,
-              "title": "Radiuskm"
+              "default": 10
             }
           },
           {
             "name": "experience",
             "in": "query",
             "required": false,
+            "description": "Keeps runners at this level, in exactly this case. `All`, or empty, keeps every level; anything else answers 422.",
             "schema": {
               "type": "string",
-              "default": "All",
-              "title": "Experience"
+              "enum": [
+                "All",
+                "Beginner",
+                "Intermediate",
+                "Advanced",
+                ""
+              ],
+              "default": "All"
             }
           },
           {
             "name": "pace",
             "in": "query",
             "required": false,
+            "description": "Empty or `Any` keeps every pace. Any other value keeps the runners whose pace range overlaps the caller's own saved one, ends included; the value itself is not read.",
             "schema": {
               "type": "string",
-              "default": "",
-              "title": "Pace"
+              "default": ""
             }
           },
           {
             "name": "availability",
             "in": "query",
             "required": false,
+            "description": "Keeps the runners whose `availability` contains this text, trimmed, ignoring case. Empty, or blank, keeps everyone.",
             "schema": {
               "type": "string",
-              "default": "",
-              "title": "Availability"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "Authorization"
+              "default": ""
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
+            "description": "The runners found, nearest first — possibly none",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
               }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "description": "A public card — exactly `PublicCard` — plus `distanceKm`.",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "area",
+                      "areaCell",
+                      "photoUrl",
+                      "bio",
+                      "paceMin",
+                      "paceMax",
+                      "experience",
+                      "availability",
+                      "usualDistance",
+                      "gear",
+                      "distanceKm"
+                    ],
+                    "properties": {
+                      "id": {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      "name": {
+                        "$ref": "#/components/schemas/Name"
+                      },
+                      "area": {
+                        "$ref": "#/components/schemas/Area"
+                      },
+                      "areaCell": {
+                        "$ref": "#/components/schemas/AreaCell"
+                      },
+                      "photoUrl": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/PhotoUrl"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bio": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Bio"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "paceMin": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Pace"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "paceMax": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Pace"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "experience": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Experience"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "availability": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Availability"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "usualDistance": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/UsualDistance"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "gear": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/Gear",
+                            "minItems": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "distanceKm": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Kilometres from the caller's area cell to this runner's, to one decimal. Approximate by up to about a cell's half-diagonal at each end, on purpose."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/runners/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A runner's id. Compared in lowercase; a value that is not a UUID matches nobody, so it answers 404.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "get": {
+        "operationId": "getPublicProfile",
+        "summary": "A runner's public card — the owner's too",
+        "description": "What other runners see of a profile. Its owner gets exactly the same card here, so they can see what others see; their whole profile is `/api/v1/me/profile`.",
+        "responses": {
+          "200": {
+            "description": "The public card",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileNotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/up": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "get": {
+        "operationId": "liveness",
+        "summary": "Liveness probe",
+        "security": [],
+        "description": "200 while the process is running. It does not check the database — restarting this service cannot fix a database outage — and it stays 200 during a graceful shutdown, because a failing liveness probe tells an orchestrator to restart, which is the wrong answer to a deliberate drain. Use /ready to decide whether to send traffic. Unversioned on purpose: an operational endpoint, not part of the profile API.",
+        "responses": {
+          "200": {
+            "description": "Alive",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "ok"
+                    }
+                  }
                 }
               }
             }
           }
         }
       }
+    },
+    "/ready": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "get": {
+        "operationId": "readiness",
+        "summary": "Readiness probe",
+        "security": [],
+        "description": "Whether this instance can serve right now. Unlike /up it does check the database, because the answer to \"do not send me traffic\" is to route elsewhere, not to restart. It answers 503 while shutting down and while the database is unreachable. A failing readiness probe should remove the instance from rotation and nothing more.",
+        "responses": {
+          "200": {
+            "description": "Ready to serve",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "ready"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not serving — shutting down, or the database is out of reach",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draining",
+                        "unavailable"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "get": {
+        "operationId": "documentation",
+        "summary": "This contract, rendered",
+        "security": [],
+        "description": "Swagger UI for the document you are reading. Served by the service itself so the page can never describe a different version than the one running, and served from assets bundled in the image rather than a CDN so it works with no network. Its JavaScript and CSS come from /docs/{asset}, which is a file server and not part of this API.",
+        "responses": {
+          "200": {
+            "description": "The documentation page",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    },
+    "/openapi.yaml": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CorrelationId"
+        }
+      ],
+      "get": {
+        "operationId": "contract",
+        "summary": "This contract, as a file",
+        "security": [],
+        "description": "The document itself, for tooling — a client generator, a diff in review, or a second renderer. Byte-for-byte the docs/openapi.yaml this service was built from.",
+        "responses": {
+          "200": {
+            "description": "The OpenAPI document",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/yaml": {}
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
-    "schemas": {
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "type": "array",
-            "title": "Detail"
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "An access token from the Identity Service, verified locally on every request — not trusted because a gateway forwarded it. HS256, signed with the secret every service shares (ADR-0022); `iss` and `aud` must be the configured issuer and audience, `exp`, `iss`, `aud` and `sub` must be present, and `sub` must be a UUID. Anything else is 401. The subject, lowercased, is the caller — \"me\" in every `/api/v1/me` path — so a runner acts only on their own profile, and there is no ownership check and no 403. Who may act is an access rule of this contract; domain.md is silent on it."
+      }
+    },
+    "responses": {
+      "Profile": {
+        "description": "The caller's whole profile",
+        "headers": {
+          "X-Correlation-Id": {
+            "$ref": "#/components/headers/CorrelationId"
           }
         },
-        "type": "object",
-        "title": "HTTPValidationError"
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Profile"
+            }
+          }
+        }
       },
-      "Profile": {
+      "Unauthorized": {
+        "description": "No token, or it does not verify",
+        "headers": {
+          "X-Correlation-Id": {
+            "$ref": "#/components/headers/CorrelationId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              ],
+              "properties": {
+                "code": {
+                  "const": "unauthorized"
+                },
+                "fieldErrors": false
+              }
+            }
+          }
+        }
+      },
+      "ProfileNotFound": {
+        "description": "No profile for that runner",
+        "headers": {
+          "X-Correlation-Id": {
+            "$ref": "#/components/headers/CorrelationId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              ],
+              "properties": {
+                "code": {
+                  "const": "profile_not_found"
+                },
+                "fieldErrors": false
+              }
+            }
+          }
+        }
+      },
+      "ValidationFailed": {
+        "description": "The request is malformed, has the wrong shape or misses a required field, or a value breaks a rule in domain.md §4",
+        "headers": {
+          "X-Correlation-Id": {
+            "$ref": "#/components/headers/CorrelationId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              ],
+              "properties": {
+                "code": {
+                  "const": "validation_failed"
+                }
+              }
+            }
+          }
+        }
+      },
+      "StorageUnavailable": {
+        "description": "Object storage did not answer. Only a photo route ever says this; nothing else asks storage, so everything else carries on.",
+        "headers": {
+          "X-Correlation-Id": {
+            "$ref": "#/components/headers/CorrelationId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              ],
+              "properties": {
+                "code": {
+                  "const": "storage_unavailable"
+                },
+                "fieldErrors": false
+              }
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Anything else. Logged here; says nothing useful there",
+        "headers": {
+          "X-Correlation-Id": {
+            "$ref": "#/components/headers/CorrelationId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              ],
+              "properties": {
+                "code": {
+                  "const": "internal_error"
+                },
+                "fieldErrors": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "headers": {
+      "CorrelationId": {
+        "required": true,
+        "description": "This request's correlation id (NFR-7.4): the X-Correlation-Id it was sent, lowercased, when that is a UUID; otherwise a fresh one. On every response, errors included.",
+        "schema": {
+          "$ref": "#/components/schemas/CorrelationId"
+        }
+      }
+    },
+    "parameters": {
+      "CorrelationId": {
+        "name": "X-Correlation-Id",
+        "in": "header",
+        "required": false,
+        "description": "Joins this request to the one that caused it; a gateway forwards it. Kept when it is a UUID (8-4-4-4-12 hex, any case), and lowercased; anything else is replaced by a fresh one. Neither traceparent nor X-Request-Id is read.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "description": "A runner's id: Identity's id for them, the subject of their access token. A UUID, in lowercase."
+      },
+      "Name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "description": "A runner's name, as shown to others. 1–80 characters after trimming."
+      },
+      "Bio": {
+        "type": "string",
+        "maxLength": 240,
+        "description": "What a runner writes about themselves. Up to 240 characters after trimming; a blank bio is no bio."
+      },
+      "Pace": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 20,
+        "description": "Decimal minutes per kilometre, kept to the nearest second: 6:20 /km is 6.333333333333333. A value is rounded on the way in — round(x × 60) / 60 — and one that rounds to 0 is refused. `paceMin` is the faster end, so it is not more than `paceMax`, a rule JSON Schema cannot state: breaking it answers 422."
+      },
+      "Experience": {
+        "type": "string",
+        "enum": [
+          "Beginner",
+          "Intermediate",
+          "Advanced"
+        ],
+        "description": "How new or experienced a runner is, in exactly this case."
+      },
+      "Area": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100,
+        "description": "The name of the place a runner usually runs, such as \"Lumphini area\". Shown to everyone. 1–100 characters after trimming."
+      },
+      "Latitude": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90,
+        "description": "Degrees, WGS 84."
+      },
+      "Longitude": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "description": "Degrees, WGS 84."
+      },
+      "Availability": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120,
+        "description": "When a runner usually runs, in their own words, such as \"Tue & Thu 18:00–20:00\". 1–120 characters after trimming."
+      },
+      "UsualDistance": {
+        "type": "string",
+        "enum": [
+          "Under 5 km",
+          "5–10 km",
+          "Over 10 km"
+        ],
+        "description": "How far a runner usually runs in one run. The dash in \"5–10 km\" is an en dash (U+2013); \"5-10 km\" with a hyphen is refused, and the refusal names the three."
+      },
+      "Gear": {
+        "type": "array",
+        "uniqueItems": true,
+        "maxItems": 10,
+        "description": "What a runner runs with, such as shoes or a watch, in the runner's order. Items are trimmed; one equal to an earlier one once trimmed is the same item, and the limit of 10 counts items after that, so a request may repeat one in different spacing.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        }
+      },
+      "PhotoRef": {
+        "type": "string",
+        "maxLength": 128,
+        "description": "The photo's key in this service's object storage, `photos/{id}/{uuid}` — a fresh uuid per upload. `createPhotoUpload` hands it out; only `attachPhoto` puts it on a profile."
+      },
+      "PhotoUrl": {
+        "type": "string",
+        "pattern": "^https?://",
+        "description": "The photo's public address, `{OBJECT_STORAGE_PUBLIC_ENDPOINT}/{OBJECT_STORAGE_BUCKET}/{photoRef}`: path style, the storage endpoint browsers use. Load it in an `<img>`; it needs no token. Worked out from `photoRef`, never stored."
+      },
+      "HideableField": {
+        "type": "string",
+        "enum": [
+          "bio",
+          "pace",
+          "availability",
+          "experience",
+          "usualDistance",
+          "gear"
+        ],
+        "description": "A field a runner may leave off their public card. `pace` hides `paceMin` and `paceMax` together. `id`, `name`, `area`, the area cell and the photo are always shown."
+      },
+      "AreaCell": {
+        "type": "object",
+        "description": "The point as other runners see it: the point nearest it whose coordinates are multiples of 0.01° (about 1.1 km across in Bangkok). Worked out, never stored or written.",
+        "additionalProperties": false,
+        "required": [
+          "latitude",
+          "longitude"
+        ],
         "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "bio": {
-            "type": "string",
-            "maxLength": 240,
-            "title": "Bio",
-            "default": ""
-          },
-          "paceMin": {
-            "type": "number",
-            "maximum": 20.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Pacemin"
-          },
-          "paceMax": {
-            "type": "number",
-            "maximum": 20.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Pacemax"
-          },
-          "experience": {
-            "type": "string",
-            "enum": [
-              "Beginner",
-              "Intermediate",
-              "Advanced"
-            ],
-            "title": "Experience"
-          },
-          "area": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Area"
-          },
-          "availability": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Availability"
-          },
           "latitude": {
-            "type": "number",
-            "maximum": 90.0,
-            "minimum": -90.0,
-            "title": "Latitude"
+            "$ref": "#/components/schemas/Latitude"
           },
           "longitude": {
-            "type": "number",
-            "maximum": 180.0,
-            "minimum": -180.0,
-            "title": "Longitude"
+            "$ref": "#/components/schemas/Longitude"
           }
-        },
+        }
+      },
+      "ProfileSave": {
         "type": "object",
+        "description": "What a save carries. The runner's answers — `name`, the pace, `experience`, `area`, the point and `availability` — are required and replace what was there, and a `bio` left out or `null` is no bio. `usualDistance` and `gear` are kept when left out and cleared with `null` (gear with `[]` too). Unknown fields are ignored, not refused — `id`, `areaCell`, `hiddenFields`, `photoRef` and `photoUrl` among them, which a save cannot write — so the owner's view can be sent back as it came.",
         "required": [
           "name",
           "paceMin",
           "paceMax",
           "experience",
           "area",
-          "availability",
           "latitude",
-          "longitude"
+          "longitude",
+          "availability"
         ],
-        "title": "Profile"
-      },
-      "ValidationError": {
         "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Location"
+          "name": {
+            "$ref": "#/components/schemas/Name"
           },
-          "msg": {
-            "type": "string",
-            "title": "Message"
+          "bio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Bio"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
+          "paceMin": {
+            "$ref": "#/components/schemas/Pace"
+          },
+          "paceMax": {
+            "$ref": "#/components/schemas/Pace"
+          },
+          "experience": {
+            "$ref": "#/components/schemas/Experience"
+          },
+          "area": {
+            "$ref": "#/components/schemas/Area"
+          },
+          "latitude": {
+            "$ref": "#/components/schemas/Latitude"
+          },
+          "longitude": {
+            "$ref": "#/components/schemas/Longitude"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/Availability"
+          },
+          "usualDistance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualDistance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gear": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gear"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
-        },
+        }
+      },
+      "Profile": {
         "type": "object",
+        "description": "The owner's view: every field, the exact point, its cell, the photo and the hidden set. Every key is always present; an unset field is `null` — gear with no items included, never `[]` — and `hiddenFields` is always a list.",
+        "additionalProperties": false,
         "required": [
-          "loc",
-          "msg",
-          "type"
+          "id",
+          "name",
+          "bio",
+          "paceMin",
+          "paceMax",
+          "experience",
+          "area",
+          "latitude",
+          "longitude",
+          "areaCell",
+          "availability",
+          "usualDistance",
+          "gear",
+          "photoRef",
+          "photoUrl",
+          "hiddenFields"
         ],
-        "title": "ValidationError"
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/Name"
+          },
+          "bio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Bio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paceMin": {
+            "$ref": "#/components/schemas/Pace"
+          },
+          "paceMax": {
+            "$ref": "#/components/schemas/Pace"
+          },
+          "experience": {
+            "$ref": "#/components/schemas/Experience"
+          },
+          "area": {
+            "$ref": "#/components/schemas/Area"
+          },
+          "latitude": {
+            "$ref": "#/components/schemas/Latitude"
+          },
+          "longitude": {
+            "$ref": "#/components/schemas/Longitude"
+          },
+          "areaCell": {
+            "$ref": "#/components/schemas/AreaCell"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/Availability"
+          },
+          "usualDistance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualDistance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gear": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gear",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "photoRef": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "photoUrl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoUrl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hiddenFields": {
+            "type": "array",
+            "uniqueItems": true,
+            "description": "Fields left off the public card, in declared order. Empty unless the runner hides something.",
+            "items": {
+              "$ref": "#/components/schemas/HideableField"
+            }
+          }
+        }
+      },
+      "PublicCard": {
+        "type": "object",
+        "description": "A profile as other runners see it — the team's \"public card\", and, with the profile's revision added, the payload `ProfileUpdated` carries. Every key is always present: a field that is hidden or unset is `null`, gear included, never `[]`. `id`, `name`, `area` and `areaCell` are never `null`; `photoUrl` is `null` without a photo. The exact point and the hidden set are never here.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "area",
+          "areaCell",
+          "photoUrl",
+          "bio",
+          "paceMin",
+          "paceMax",
+          "experience",
+          "availability",
+          "usualDistance",
+          "gear"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/Name"
+          },
+          "area": {
+            "$ref": "#/components/schemas/Area"
+          },
+          "areaCell": {
+            "$ref": "#/components/schemas/AreaCell"
+          },
+          "photoUrl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoUrl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Bio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paceMin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paceMax": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "experience": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Experience"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Availability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usualDistance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualDistance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gear": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gear",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CorrelationId": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "description": "A UUID, lowercase."
+      },
+      "ApiError": {
+        "type": "object",
+        "description": "Every error this service answers: the team frontend's ApiErrorBody. Branch on `code`, never on `message`.",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "correlationId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable, lowercase snake_case: unauthorized (401), profile_not_found (404), not_found (404, no such route), validation_failed (422), internal_error (500), storage_unavailable (503, a photo route that cannot reach object storage)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human prose, for people. Do not parse."
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          },
+          "fieldErrors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "On a 422, when a field can be named: one message per field, keyed by its name in the request. A problem inside a field is keyed by the field itself (`gear`, not `gear[3]`). Every malformed field is named at once; of the rules in domain.md §4, the first one broken."
+          }
+        }
       }
     }
   }
