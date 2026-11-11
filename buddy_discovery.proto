@@ -19,11 +19,14 @@ message BuddyRequest {
   string status = 4;
   string created_at = 5;
   string updated_at = 6;
+  // The sender's message to the recipient, up to 180 characters; empty when none was written.
+  string note = 7;
 }
 
 message SendBuddyRequestRequest {
   string sender_id = 1;
   string recipient_id = 2;
+  string note = 3;
 }
 
 message GetBuddyRequestRequest {
