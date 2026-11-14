@@ -8,7 +8,7 @@ This repository contains contracts for every implemented backend service and the
 | Identity (team Node.js / Express) | [team-identity.openapi.json](team-identity.openapi.json) | Derived from mounted routes, controllers and session code; includes email/phone verification and password reset |
 | Profile | [profile.openapi.json](profile.openapi.json) | JSON copy of `profile-service`'s `docs/openapi.yaml`; own profile, field visibility, photo uploads, public profiles and a temporary runner listing |
 | Run Conditions | [conditions.openapi.json](conditions.openapi.json) | Exported FastAPI snapshot; weather/air-quality conditions and readiness |
-| Run Scheduling | [scheduling.openapi.json](scheduling.openapi.json) | Exported FastAPI snapshot; runs, membership and internal attendance confirmation |
+| Run Scheduling | [scheduling.openapi.json](scheduling.openapi.json) | Exported FastAPI snapshot; runs, membership, organizer finish and internal attendance confirmation |
 | Notification | [notification.openapi.json](notification.openapi.json) | Live export from `notification-service`; list notifications, mark read and category preferences |
 | Buddy Discovery (gRPC) | [buddy_discovery.proto](buddy_discovery.proto) | Copy of the service's versioned protobuf; seven RPCs for search, buddies and requests |
 | Buddy Discovery (HTTP) | [discovery.openapi.json](discovery.openapi.json) | Derived from Rails routes; health endpoint only |
