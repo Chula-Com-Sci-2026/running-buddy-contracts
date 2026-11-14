@@ -43,7 +43,7 @@ Profile publishes `ProfileUpdated` after every change to a runner's profile: a s
   "correlationId": "UUID",
   "payload": {
     "id": "UUID",
-    "name": "Ray Attajak",
+    "name": "Ray N.",
     "area": "Lumphini area",
     "areaCell": { "latitude": 13.73, "longitude": 100.54 },
     "photoUrl": null,
